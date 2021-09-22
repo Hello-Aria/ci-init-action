@@ -1,0 +1,66 @@
+name: Hello-Aria Init
+description: "Initialize Aria's CI"
+inputs:
+  ssh-priv-key:
+    description: Private SSH key to install private dependencies hosted on git
+    required: false
+  read-packages-token:
+    description: GitHub Packages Token to install private dependencies
+    required: false
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v2
+      with:
+        node-version: '14.x'
+
+    - name: Cache node modules
+      uses: actions/cache@v2
+      id: cache-dependencies
+      env:
+        cache-name: cache-node-modules
+      with:
+        path: node_modules
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+
+    - name: Create .npmrc
+      uses: ChristopherHX/conditional@b4a9649204f81002ec9a4ef7d4bf7d6b2ab7fa55
+      with:
+        if: ${{ inputs.read-packages-token != '' }}
+        step: |
+          shell: sh
+          run: |
+            echo "//npm.pkg.github.com/:_authToken=$READ_PACKAGES_TOKEN" >> ~/.npmrc
+          env:
+            READ_PACKAGES_TOKEN: '${{ inputs.read-packages-token }}'
+
+    - name: Copy private SSH key
+      uses: ChristopherHX/conditional@b4a9649204f81002ec9a4ef7d4bf7d6b2ab7fa55
+      with:
+        if: ${{ inputs.ssh-priv-key != '' }}
+        step: |
+          shell: sh
+          run: |
+            mkdir -p ~/.ssh
+            chmod 700 ~/.ssh
+            echo "$SSH_PRIV_KEY" > ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+          env:
+            SSH_PRIV_KEY: '${{ inputs.ssh-priv-key }}'
+
+    - name: Update npm
+      uses: ChristopherHX/conditional@b4a9649204f81002ec9a4ef7d4bf7d6b2ab7fa55
+      with:
+        if: ${{ steps.cache-dependencies.outputs.cache-hit != 'true' }}
+        step: |
+          shell: sh
+          run: npm install -g npm
+
+    - name: Install Dependencies
+      uses: ChristopherHX/conditional@b4a9649204f81002ec9a4ef7d4bf7d6b2ab7fa55
+      with:
+        if: ${{ steps.cache-dependencies.outputs.cache-hit != 'true' }}
+        step: |
+          shell: sh
+          run: npm ci
